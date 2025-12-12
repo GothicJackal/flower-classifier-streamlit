@@ -49,7 +49,7 @@ def preprocess_pil(img: Image.Image, target_hw):
 
     # If your training pipeline already used preprocess_input inside the model graph
     # (common), scaling 0..1 is fine. This is a safe default for many saved models.
-    x = x / 255.0
+    # x = x / 255.0  # turn off scaling
 
     x = np.expand_dims(x, axis=0)  # (1, H, W, 3)
     return x
@@ -117,3 +117,4 @@ st.bar_chart(chart_data)
 with st.expander("Lihat semua probabilitas"):
     for i, cname in enumerate(CLASS_NAMES):
         st.write(f"{cname}: {float(probs[i])*100:.2f}%")
+
