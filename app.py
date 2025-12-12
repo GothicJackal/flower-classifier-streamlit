@@ -1,115 +1,119 @@
+import os
 import json
 import numpy as np
 import streamlit as st
 from PIL import Image
 import tensorflow as tf
 
-st.set_page_config(page_title="Flower Classifier", page_icon="🌼", layout="centered")
+st.set_page_config(page_title="Flower Classifier", page_icon="🌸", layout="centered")
 
-# ==== KONFIGURASI DASAR ====
-# Ganti sesuai lokasi file kamu di Drive/PC
-MODEL_PATH = "best_finetune.keras"   # contoh: "/content/drive/MyDrive/flowers_runs/best_finetune.keras"
-CLASS_JSON = "class_names.json"      # opsional; jika ada akan dipakai
-DEFAULT_CLASS_NAMES = ["daisy", "dandelion", "roses", "sunflowers", "tulips"]
+# === File names (must be in the same folder as app.py) ===
+MODEL_PATH = "best_finetune.keras"
+CLASS_JSON = "class_names.json"
 
-# ==== UTIL =====
+
 @st.cache_resource(show_spinner=True)
-def load_model(model_path):
-    model = tf.keras.models.load_model(model_path, compile=False)
-    return model
+def load_assets():
+    # Validate files exist
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(
+            f"Model not found: {MODEL_PATH}. Put it next to app.py (same folder)."
+        )
+    if not os.path.exists(CLASS_JSON):
+        raise FileNotFoundError(
+            f"Class mapping not found: {CLASS_JSON}. Put it next to app.py (same folder)."
+        )
 
-def load_class_names():
-    try:
-        with open(CLASS_JSON, "r") as f:
-            names = json.load(f)
-            if isinstance(names, dict):  # kalau disimpan sebagai dict index->name
-                # pastikan urut dari 0..N-1
-                keys = sorted([int(k) for k in names.keys()])
-                names = [names[str(k)] for k in keys]
-            return names
-    except Exception:
-        return DEFAULT_CLASS_NAMES
+    # Load class names
+    with open(CLASS_JSON, "r", encoding="utf-8") as f:
+        class_names = json.load(f)
 
-def preprocess_image(img: Image.Image, target_size):
-    # img: PIL.Image
-    img = img.convert("RGB").resize(target_size, Image.BILINEAR)
+    if not isinstance(class_names, list) or len(class_names) == 0:
+        raise ValueError("class_names.json must be a non-empty JSON list, e.g. [\"daisy\", ...]")
+
+    # Load model
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+
+    # Detect model input size (H, W)
+    ishape = model.inputs[0].shape  # (None, H, W, 3)
+    h = int(ishape[1]) if ishape[1] is not None else 224
+    w = int(ishape[2]) if ishape[2] is not None else 224
+
+    return model, class_names, (h, w)
+
+
+def preprocess_pil(img: Image.Image, target_hw):
+    h, w = target_hw
+    img = img.convert("RGB").resize((w, h))
     x = np.array(img, dtype=np.float32)
 
-    # Jika model sudah punya layer preprocessing/normalization di dalamnya,
-    # input 0..255 boleh; tapi aman kita skala 0..1
+    # If your training pipeline already used preprocess_input inside the model graph
+    # (common), scaling 0..1 is fine. This is a safe default for many saved models.
     x = x / 255.0
-    x = np.expand_dims(x, 0)  # (1, H, W, 3)
+
+    x = np.expand_dims(x, axis=0)  # (1, H, W, 3)
     return x
 
-def get_input_size(model):
-    # Ambil ukuran input dari model: (None, H, W, 3)
-    ishape = model.inputs[0].shape
-    # TensorShape(None, H, W, 3)
-    H = int(ishape[1]) if ishape[1] is not None else 224
-    W = int(ishape[2]) if ishape[2] is not None else 224
-    return (W, H)  # PIL resize expects (W,H)
 
-def softmax_topk(probs, class_names, k=5):
+def topk(probs, class_names, k=5):
     probs = probs.flatten()
+    k = min(k, len(class_names))
     idxs = np.argsort(probs)[::-1][:k]
     return [(class_names[i], float(probs[i])) for i in idxs]
 
-# ==== UI ====
-st.title("🌼 Flower Classifier")
-st.caption("Upload gambar bunga lalu dapatkan prediksi kelas + probabilitas.")
 
-with st.sidebar:
-    st.header("Model")
-    model_path = st.text_input("Path model (.keras)", MODEL_PATH)
-    use_tta = st.checkbox("Gunakan TTA (flip horizontal)", value=False)
-    run_btn = st.button("Muat / Reload Model")
+# === UI ===
+st.title("🌸 Flower Classifier")
+st.write("Upload gambar bunga, lalu model akan memprediksi kelasnya.")
 
-# cache model
-if "model" not in st.session_state or run_btn or st.session_state.get("model_path") != model_path:
-    with st.spinner("Memuat model..."):
-        st.session_state["model"] = load_model(model_path)
-        st.session_state["model_path"] = model_path
+with st.expander("📌 Pastikan file ada"):
+    st.code(
+        "Letakkan file ini dalam folder yang sama:\n"
+        "- app.py\n"
+        "- best_finetune.keras\n"
+        "- class_names.json\n",
+        language="text",
+    )
 
-model = st.session_state["model"]
-class_names = load_class_names()
+# Load model + classes
+try:
+    model, CLASS_NAMES, TARGET_HW = load_assets()
+except Exception as e:
+    st.error(str(e))
+    st.stop()
 
-col1, col2 = st.columns([1,1])
-with col1:
-    uploaded = st.file_uploader("Pilih gambar (jpg/png)", type=["jpg","jpeg","png"])
-with col2:
-    st.write("Kelas tersedia:")
-    st.write(", ".join(class_names))
+st.caption(f"Model input size: {TARGET_HW[0]}x{TARGET_HW[1]} | Classes: {len(CLASS_NAMES)}")
 
-if uploaded is not None:
-    img = Image.open(uploaded)
-    st.image(img, caption="Gambar diupload", use_container_width=True)
+uploaded = st.file_uploader("Upload image (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
-    # siapkan input sesuai ukuran model
-    target_size = get_input_size(model)  # (W,H)
-    x = preprocess_image(img, target_size)
+if uploaded is None:
+    st.info("Silakan upload gambar untuk mulai.")
+    st.stop()
 
-    # Opsional: TTA sederhana (flip horizontal)
-    if use_tta:
-        x_flip = np.flip(x, axis=2)  # flip width
-        preds1 = model.predict(x, verbose=0)
-        preds2 = model.predict(x_flip, verbose=0)
-        preds = (preds1 + preds2) / 2.0
-    else:
-        preds = model.predict(x, verbose=0)
+img = Image.open(uploaded)
+st.image(img, caption="Uploaded image", use_container_width=True)
 
-    top5 = softmax_topk(preds[0], class_names, k=min(5, len(class_names)))
+x = preprocess_pil(img, TARGET_HW)
 
-    st.subheader("Hasil Prediksi")
-    st.metric("Prediksi Utama", top5[0][0], help=f"Prob: {top5[0][1]:.3f}")
-    st.write("Top-K:")
-    for name, p in top5:
-        st.write(f"- **{name}**: {p:.3f}")
+# Predict
+probs = model.predict(x, verbose=0)[0]
+pred_idx = int(np.argmax(probs))
+pred_name = CLASS_NAMES[pred_idx]
+pred_prob = float(probs[pred_idx])
 
-    # Simple bar chart
-    st.bar_chart({name: p for name, p in top5})
-else:
-    st.info("Upload gambar untuk memulai.")
+st.subheader("Hasil Prediksi")
+st.metric("Prediksi", pred_name, f"{pred_prob*100:.2f}%")
 
-st.caption("Tips: jika hasil tidak sesuai, pastikan class_names.json konsisten dengan mapping saat training.")
+st.write("Top predictions:")
+top5 = topk(probs, CLASS_NAMES, k=5)
+for name, p in top5:
+    st.write(f"- **{name}**: {p*100:.2f}%")
 
+# Bar chart
+chart_data = {name: p for name, p in top5}
+st.bar_chart(chart_data)
 
+# Optional: show raw probabilities
+with st.expander("Lihat semua probabilitas"):
+    for i, cname in enumerate(CLASS_NAMES):
+        st.write(f"{cname}: {float(probs[i])*100:.2f}%")
