@@ -8,7 +8,7 @@ st.set_page_config(page_title="Flower Classifier", page_icon="🌼", layout="cen
 
 # ==== KONFIGURASI DASAR ====
 # Ganti sesuai lokasi file kamu di Drive/PC
-MODEL_PATH = "best_model.keras"   # contoh: "/content/drive/MyDrive/flowers_runs/best_finetune.keras"
+MODEL_PATH = "best_finetune.keras"   # contoh: "/content/drive/MyDrive/flowers_runs/best_finetune.keras"
 CLASS_JSON = "class_names.json"      # opsional; jika ada akan dipakai
 DEFAULT_CLASS_NAMES = ["daisy", "dandelion", "roses", "sunflowers", "tulips"]
 
@@ -111,4 +111,5 @@ else:
     st.info("Upload gambar untuk memulai.")
 
 st.caption("Tips: jika hasil tidak sesuai, pastikan class_names.json konsisten dengan mapping saat training.")
+
 
