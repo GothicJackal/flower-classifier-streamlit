@@ -65,13 +65,7 @@ def topk(probs, class_names, k=5):
 # === UI ===
 st.title("🌸 Flower Classifier")
 st.write("Upload gambar bunga, lalu model akan memprediksi kelasnya.")
-
-with st.expander("📌 Pastikan file ada"):
-    st.code(
-        "Letakkan file ini dalam folder yang sama:\n"
-        "- app.py\n"
-        "- best_finetune.keras\n"
-        "- class_names.json\n",
+    
         language="text",
     )
 
@@ -117,4 +111,5 @@ st.bar_chart(chart_data)
 with st.expander("Lihat semua probabilitas"):
     for i, cname in enumerate(CLASS_NAMES):
         st.write(f"{cname}: {float(probs[i])*100:.2f}%")
+
 
